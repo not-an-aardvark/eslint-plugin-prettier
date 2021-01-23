@@ -32,21 +32,34 @@ let prettier;
 // ------------------------------------------------------------------------------
 
 /**
+ * Extend fix range to prevent changes from other rules.
+ * @param {ruleFixer} fixer - The fixer to fix.
+ * @param {int[]} range - The extended range node.
+ */
+function* extendFixRange(fixer, range) {
+  yield fixer.insertTextBeforeRange(range, '');
+  yield fixer.insertTextAfterRange(range, '');
+}
+
+/**
  * Reports an "Insert ..." issue where text must be inserted.
  * @param {RuleContext} context - The ESLint rule context.
  * @param {number} offset - The source offset where to insert text.
  * @param {string} text - The text to be inserted.
+ * @param {boolean} experimentalFix - Use the new way to fix code.
  * @returns {void}
  */
-function reportInsert(context, offset, text) {
+function reportInsert(context, offset, text, experimentalFix) {
   const pos = context.getSourceCode().getLocFromIndex(offset);
   const range = [offset, offset];
   context.report({
     message: 'Insert `{{ code }}`',
     data: { code: showInvisibles(text) },
     loc: { start: pos, end: pos },
-    fix(fixer) {
-      return fixer.insertTextAfterRange(range, text);
+    *fix(fixer) {
+      yield fixer.insertTextAfterRange(range, text);
+      if (experimentalFix)
+        yield* extendFixRange(fixer, [0, context.getSourceCode().text.length]);
     }
   });
 }
@@ -56,9 +69,10 @@ function reportInsert(context, offset, text) {
  * @param {RuleContext} context - The ESLint rule context.
  * @param {number} offset - The source offset where to delete text.
  * @param {string} text - The text to be deleted.
+ * @param {boolean} experimentalFix - Use the new way to fix code.
  * @returns {void}
  */
-function reportDelete(context, offset, text) {
+function reportDelete(context, offset, text, experimentalFix) {
   const start = context.getSourceCode().getLocFromIndex(offset);
   const end = context.getSourceCode().getLocFromIndex(offset + text.length);
   const range = [offset, offset + text.length];
@@ -66,8 +80,10 @@ function reportDelete(context, offset, text) {
     message: 'Delete `{{ code }}`',
     data: { code: showInvisibles(text) },
     loc: { start, end },
-    fix(fixer) {
-      return fixer.removeRange(range);
+    *fix(fixer) {
+      yield fixer.removeRange(range);
+      if (experimentalFix)
+        yield* extendFixRange(fixer, [0, context.getSourceCode().text.length]);
     }
   });
 }
@@ -79,9 +95,16 @@ function reportDelete(context, offset, text) {
  with inserted text.
  * @param {string} deleteText - The text to be deleted.
  * @param {string} insertText - The text to be inserted.
+ * @param {boolean} experimentalFix - Use the new way to fix code.
  * @returns {void}
  */
-function reportReplace(context, offset, deleteText, insertText) {
+function reportReplace(
+  context,
+  offset,
+  deleteText,
+  insertText,
+  experimentalFix
+) {
   const start = context.getSourceCode().getLocFromIndex(offset);
   const end = context
     .getSourceCode()
@@ -94,8 +117,10 @@ function reportReplace(context, offset, deleteText, insertText) {
       insertCode: showInvisibles(insertText)
     },
     loc: { start, end },
-    fix(fixer) {
-      return fixer.replaceTextRange(range, insertText);
+    *fix(fixer) {
+      yield fixer.replaceTextRange(range, insertText);
+      if (experimentalFix)
+        yield* extendFixRange(fixer, [0, context.getSourceCode().text.length]);
     }
   });
 }
@@ -139,6 +164,10 @@ module.exports = {
                 type: 'object',
                 properties: {},
                 additionalProperties: true
+              },
+              experimentalFix: {
+                type: 'boolean',
+                default: false
               }
             },
             additionalProperties: true
@@ -150,6 +179,8 @@ module.exports = {
           !context.options[1] || context.options[1].usePrettierrc !== false;
         const eslintFileInfoOptions =
           (context.options[1] && context.options[1].fileInfoOptions) || {};
+        const experimentalFix =
+          context.options[1] && context.options[1].experimentalFix === true;
         const sourceCode = context.getSourceCode();
         const filepath = context.getFilename();
         const source = sourceCode.text;
@@ -269,14 +300,16 @@ module.exports = {
                     reportInsert(
                       context,
                       difference.offset,
-                      difference.insertText
+                      difference.insertText,
+                      experimentalFix
                     );
                     break;
                   case DELETE:
                     reportDelete(
                       context,
                       difference.offset,
-                      difference.deleteText
+                      difference.deleteText,
+                      experimentalFix
                     );
                     break;
                   case REPLACE:
@@ -284,7 +317,8 @@ module.exports = {
                       context,
                       difference.offset,
                       difference.deleteText,
-                      difference.insertText
+                      difference.insertText,
+                      experimentalFix
                     );
                     break;
                 }
