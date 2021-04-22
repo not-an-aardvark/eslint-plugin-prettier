@@ -206,18 +206,52 @@ module.exports = {
             // * Prettier supports parsing the file type
             // * There is an ESLint processor that extracts JavaScript snippets
             //   from the file type.
-            const parserBlocklist = [null, 'graphql', 'markdown', 'html'];
-            if (
-              filepath === onDiskFilepath &&
-              parserBlocklist.indexOf(prettierFileInfo.inferredParser) !== -1
-            ) {
-              // Prettier v1.16.0 renamed the `babylon` parser to `babel`
-              // Use the modern name if available
-              const supportBabelParser = prettier
-                .getSupportInfo()
-                .languages.some(language => language.parsers.includes('babel'));
+            if (filepath === onDiskFilepath) {
+              // The following list means the plugin process source into js content
+              // but with same filename, so we need to change the parser to `babel`
+              // by default.
+              // Related ESLint plugins are:
+              // 1. `eslint-plugin-graphql` (replacement: `@graphql-eslint/eslint-plugin`)
+              // 2. `eslint-plugin-markdown@1` (replacement: `eslint-plugin-markdown@2+`)
+              // 3. `eslint-plugin-html`
+              const parserBlocklist = [null, 'graphql', 'markdown', 'html'];
+              if (
+                parserBlocklist.indexOf(prettierFileInfo.inferredParser) !== -1
+              ) {
+                // Prettier v1.16.0 renamed the `babylon` parser to `babel`
+                // Use the modern name if available
+                const supportBabelParser = prettier
+                  .getSupportInfo()
+                  .languages.some(language =>
+                    language.parsers.includes('babel')
+                  );
 
-              initialOptions.parser = supportBabelParser ? 'babel' : 'babylon';
+                initialOptions.parser = supportBabelParser
+                  ? 'babel'
+                  : 'babylon';
+              }
+            } else {
+              // Simlilar to https://github.com/prettier/stylelint-prettier/pull/22
+              // In all of the following cases ESLint extracts a part of a file to
+              // be formatted and there exists a prettier parser for the whole file.
+              // If you're interested in prettier you'll want a fully formatted file so
+              // you're about to run prettier over the whole file anyway.
+              // Therefore running prettier over just the style section is wasteful, so
+              // skip it.
+              const parserBlocklist = [
+                'babel',
+                'babylon',
+                'flow',
+                'typescript',
+                'vue',
+                'markdown',
+                'html'
+              ];
+              if (
+                parserBlocklist.indexOf(prettierFileInfo.inferredParser) !== -1
+              ) {
+                return;
+              }
             }
 
             const prettierOptions = Object.assign(
