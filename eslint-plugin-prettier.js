@@ -245,6 +245,7 @@ module.exports = {
                 'typescript',
                 'vue',
                 'markdown',
+                'mdx',
                 'html'
               ];
               if (
